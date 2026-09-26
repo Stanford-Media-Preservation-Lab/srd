@@ -1,6 +1,6 @@
 # Installing srd on macOS
 
-**srd v1.1 — May 2026**
+**srd v1.2 — September 2026**
 
 ---
 
@@ -49,7 +49,7 @@ pipx installs srd in an isolated environment and avoids conflicts with Homebrew'
 
 ```bash
 brew install pipx   # if pipx is not already installed
-pipx install git+https://github.com/michaelangeletti/smpl-replicate-directory.git
+pipx install git+https://github.com/Stanford-Media-Preservation-Lab/srd.git
 ```
 
 Verify:
