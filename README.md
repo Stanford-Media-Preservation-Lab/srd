@@ -1,7 +1,7 @@
 # srd
 
 **srd** — SMPL Replicate Directory
-**v1.1 — May 2026**
+**v1.2 — September 2026**
 
 A command-line tool for secure file replication with MD5 integrity verification, developed for the Stanford Media Preservation Lab. Designed for digital preservation workflows where confirming that every file arrived completely and without corruption is as important as the transfer itself.
 
@@ -27,14 +27,14 @@ A command-line tool for secure file replication with MD5 integrity verification,
 
 ```bash
 brew install pipx        # macOS only, if pipx is not already installed
-pipx install git+https://github.com/michaelangeletti/smpl-replicate-directory.git
+pipx install git+https://github.com/Stanford-Media-Preservation-Lab/srd.git
 ```
 
 On Ubuntu:
 
 ```bash
 pip3 install --break-system-packages pipx
-pipx install git+https://github.com/michaelangeletti/smpl-replicate-directory.git
+pipx install git+https://github.com/Stanford-Media-Preservation-Lab/srd.git
 ```
 
 **Requires:** Python 3.9+, rsync (built into macOS; available by default on Ubuntu)
