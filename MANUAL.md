@@ -2,7 +2,7 @@
 ## User Manual
 
 **Stanford Media Preservation Lab**
-Version 1.1 — May 2026
+Version 1.2 — September 2026
 
 ---
 
@@ -234,9 +234,10 @@ A complete srd run proceeds through four sequential phases. Each phase with meas
 
 Before any data moves, srd:
 
-- Verifies that source and destination paths exist (and are accessible)
+- Verifies that source and destination paths exist (and are accessible). If a local source path is not found, srd prompts you to mount the drive and retry rather than exiting immediately.
 - On SFTP and push modes, verifies the SSH connection
 - Counts all files in the source and calculates their total size
+- Checks that all source data files have accompanying `.md5` sidecar files. If any are missing, srd lists them and asks whether to halt so you can generate the missing checksums first, or continue with those files unverified.
 - Checks that the destination has sufficient free disk space (requires 10% safety margin)
 
 No progress bar is shown during pre-flight. If any check fails, srd exits with a clear error message before touching any data.
@@ -292,7 +293,17 @@ Reel_01_001.mov.md5     ← sidecar containing the expected MD5 hash
 
 The sidecar can contain the hash in any common format — srd extracts the first 32-character hex string it finds, so both bare hash files and files with filenames (as produced by `md5sum` or `md5`) are supported.
 
-**Files without a sidecar** are flagged as orphans in the final report (a warning, not a failure). They are still copied, but cannot be verified. Consistent orphan warnings indicate that the originating workflow is not producing sidecar files.
+**Files without a sidecar** trigger a pre-flight warning before the transfer begins. srd lists every affected file and asks:
+
+```
+Halt transfer to generate missing checksums? [y/N]:
+```
+
+- Answer **y** to stop. Generate the missing `.md5` sidecars (e.g. `md5 -r *.mov > checksums.md5`) then re-run srd.
+- Answer **n** (or press Enter) to continue. Files without sidecars are still copied but are skipped during integrity verification and noted in the final report as orphans.
+- In non-interactive (headless) sessions, srd continues automatically and logs the warning.
+
+Consistent orphan warnings indicate that the originating workflow is not producing sidecar files.
 
 **Checksum mismatches** are a failure condition. They indicate that the file content at the destination does not match the file content at the source at the time the sidecar was generated — this may indicate a corrupt transfer, a corrupt source file, or a stale sidecar.
 
@@ -328,6 +339,15 @@ CHECK 3: Documentation
 ============================================================
 ```
 
+If the destination contains files not in the source batch (pre-existing or added during transfer), CHECK 1 still passes and a yellow NOTE is shown:
+
+```
+CHECK 1: Complete transfer
+  ✓ PASS — All 3184 source files are present at the destination.
+  ⚠ NOTE — 12 file(s) at the destination were not part of this source batch
+            (pre-existing or added during transfer) and were not verified.
+```
+
 ### When issues are found
 
 **Missing files** are listed individually (up to 100 filenames):
@@ -355,10 +375,11 @@ If more than 100 anomalies of a single type are found, srd notes the total and f
 
 ### Check outcomes and severity
 
-| Check | Outcome if failed | Causes overall failure? |
+| Check | Outcome | Causes overall failure? |
 |---|---|---|
-| Source files have .md5 sidecars | WARNING — files copied but unverifiable | No |
-| File count matches | ERROR — count mismatch reported with difference | Yes |
+| Source files have .md5 sidecars | Pre-flight prompt to halt; if continuing, orphans noted in report | No |
+| Destination file count ≥ source count | NOTE — extra files identified as not part of source batch | No |
+| Destination file count < source count | ERROR — count mismatch and missing files listed by name | Yes |
 | No files missing from destination | ERROR — missing files listed by name | Yes |
 | All checksums pass | ERROR — mismatched files listed by name | Yes |
 
@@ -454,7 +475,9 @@ srd performs early path validation and will report this before attempting any tr
 
 ### File count mismatch — but no files listed as missing
 
-This can occur if the destination has extra files from a previous transfer that are not in the current source manifest, resulting in a higher destination count than source count. The difference value shown in the report (e.g. `+4`) indicates which direction the mismatch goes.
+If the destination has **more** files than the source (e.g. from a previous transfer batch that wrote to the same folder), srd reports a yellow NOTE rather than a failure. The NOTE names the count of extra files and states they were not part of this source batch and were not verified. The overall run still succeeds provided all source files arrived and their checksums passed.
+
+If the destination has **fewer** files than the source, that is a genuine failure. srd lists the missing files by relative path.
 
 Also note: hidden files (names beginning with `.`, such as `.DS_Store`) are excluded from both counts. A mismatch caused entirely by hidden files is not a preservation concern, but srd notes this in the report to rule it out quickly.
 

@@ -173,6 +173,55 @@ def check_local_path(path: str, label: str) -> bool:
     return True
 
 
+def check_local_path_with_retry(path: str, label: str) -> bool:
+    """
+    Verify a local path exists and is a directory.
+    If not found, prompt the user to mount the drive and retry rather than
+    exiting immediately — useful for source drives that may be slow to mount
+    or were accidentally ejected before srd started.
+    In non-interactive (headless) sessions, falls back to a single check.
+    """
+    p = Path(path)
+    if p.exists() and p.is_dir():
+        return True
+
+    if not sys.stdout.isatty():
+        # Non-interactive — report and fail as before.
+        return check_local_path(path, label)
+
+    logger.warning(f"{Colors.YELLOW}⚠ {label} path not found: {path}{Colors.RESET}")
+    logger.warning("  The drive may not be mounted yet.")
+
+    while True:
+        try:
+            resp = input(
+                "  Mount the drive, then press Enter to retry, "
+                "or type 'quit' to exit: "
+            ).strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return False
+
+        if resp == 'quit':
+            return False
+
+        p = Path(path)
+        if p.exists() and p.is_dir():
+            logger.info(f"{Colors.GREEN}✓ {label} path found: {path}{Colors.RESET}")
+            return True
+
+        if not p.exists():
+            logger.warning(
+                f"{Colors.YELLOW}  Still not found: {path} — "
+                f"try again or type 'quit' to exit.{Colors.RESET}"
+            )
+        elif not p.is_dir():
+            logger.error(
+                f"{Colors.RED}✗ {label} path is not a directory: {path}{Colors.RESET}"
+            )
+            return False
+
+
 def check_remote_path(path: str, label: str) -> bool:
     """
     Verify a remote path exists and is a directory via SSH.
@@ -531,8 +580,12 @@ def verify_integrity(
     missing_from_local = remote_manifest - local_manifest
     checksum_mismatches = []
     
-    # Verify checksums for data files
-    data_files = [f for f in sorted(local_manifest) if not f.endswith('.md5')]
+    # Verify checksums for transferred files only.
+    # We scope to remote_manifest rather than local_manifest so pre-existing
+    # files already in the destination directory are not verified (or counted)
+    # as part of this transfer.  Files in local_manifest but NOT in
+    # remote_manifest are silently skipped — they were there before we arrived.
+    data_files = [f for f in sorted(remote_manifest) if not f.endswith('.md5')]
     
     total_to_verify = len(data_files)
     logger.info(f"{Colors.CYAN}Verifying checksums for {total_to_verify} files...{Colors.RESET}")
@@ -583,6 +636,10 @@ def verify_integrity(
         v_active_lines = 0
 
     for rel_path in data_files:
+        if rel_path not in local_files_map:
+            # File is missing from the destination — already captured in
+            # missing_from_local; skip here to avoid KeyError.
+            continue
         full_path    = local_files_map[rel_path]
         sidecar_path = Path(str(full_path) + '.md5')
 
@@ -738,7 +795,10 @@ def print_final_report(stats: TransferStats) -> bool:
 
     # ── CHECK 1: Were all source files copied? ────────────────────────────────
     logger.info(Colors.BOLD + "CHECK 1: Complete transfer" + Colors.RESET)
-    count_ok = stats.remote_file_count == stats.local_file_count
+    # PASS when dest has at least as many files as the source.
+    # A dest with MORE files is fine — those are pre-existing files that were
+    # already there before this transfer and are not part of this batch.
+    count_ok = stats.local_file_count >= stats.remote_file_count
     missing_ok = len(stats.missing_files) == 0
 
     if count_ok and missing_ok:
@@ -746,15 +806,22 @@ def print_final_report(stats: TransferStats) -> bool:
             f"{Colors.GREEN}  ✓ PASS — All {stats.remote_file_count} source files are present"
             f" at the destination.{Colors.RESET}"
         )
+        # Note any files at the destination that were not part of this source batch
+        # (pre-existing before transfer, or added to the destination while it was running).
+        extra = stats.local_file_count - stats.remote_file_count
+        if extra > 0:
+            logger.info(
+                f"{Colors.YELLOW}  ⚠ NOTE — {extra} file(s) at the destination were not part"
+                f" of this source batch (pre-existing or added during transfer)"
+                f" and were not verified.{Colors.RESET}"
+            )
     else:
         success = False
         if not count_ok:
-            diff = stats.local_file_count - stats.remote_file_count
-            direction = f"+{diff}" if diff > 0 else str(diff)
+            missing_n = stats.remote_file_count - stats.local_file_count
             logger.error(
-                f"  ✗ FAIL — File count mismatch:"
-                f" source={stats.remote_file_count}, dest={stats.local_file_count}"
-                f" ({direction})."
+                f"  ✗ FAIL — {missing_n} source file(s) did not arrive at the destination:"
+                f" source={stats.remote_file_count}, dest={stats.local_file_count}."
                 f" Hidden files (.*) are excluded from both counts."
             )
         if stats.missing_files:
@@ -1592,10 +1659,74 @@ def generate_csv_filelist(source_path: str, csv_file: str) -> None:
         logger.error(f"Could not write CSV file list: {e}")
 
 
+def preflight_sidecar_check(orphans: List[str], source_is_local: bool) -> bool:
+    """
+    Pre-flight check: warn if source files are missing .md5 sidecars and give the
+    user a chance to halt and generate the missing checksums before transfer starts.
+
+    Args:
+        orphans:         Files with no .md5 sidecar (from get_local_stats / get_remote_stats).
+        source_is_local: True for push/local modes where the user can easily run md5
+                         on the source; False for pull mode (source is on the server).
+
+    Returns:
+        True  → proceed with transfer
+        False → user chose to halt
+    """
+    if not orphans:
+        return True
+
+    CAP = 20
+    logger.warning(
+        f"\n{Colors.YELLOW}⚠  Pre-flight: {len(orphans)} file(s) are missing .md5 sidecars "
+        f"and cannot be verified:{Colors.RESET}"
+    )
+    for f in sorted(orphans)[:CAP]:
+        logger.warning(f"  → {f}")
+    if len(orphans) > CAP:
+        logger.warning(f"  ... and {len(orphans) - CAP} more")
+
+    if source_is_local:
+        logger.warning(
+            f"\n{Colors.YELLOW}  Generate sidecars first (e.g. md5 -r * > checksums.md5 then rename),"
+            f"\n  or continue — those files will be copied but not integrity-verified.{Colors.RESET}"
+        )
+    else:
+        logger.warning(
+            f"\n{Colors.YELLOW}  These files will be copied but not integrity-verified.{Colors.RESET}"
+        )
+
+    if not sys.stdout.isatty():
+        # Non-interactive: log the warning and continue (don't block a scheduled run).
+        logger.warning("  (Non-interactive session — continuing despite missing sidecars.)")
+        return True
+
+    try:
+        resp = input(
+            "  Halt transfer to generate missing checksums? [y/N]: "
+        ).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        logger.info("Transfer cancelled.")
+        return False
+
+    if resp in ('y', 'yes'):
+        logger.info(
+            "Transfer halted. Generate the missing .md5 sidecars and re-run srd."
+        )
+        return False
+
+    logger.info(
+        f"{Colors.YELLOW}Continuing — {len(orphans)} file(s) will be copied "
+        f"but skipped during verification.{Colors.RESET}"
+    )
+    return True
+
+
 def replicate() -> bool:
     """
     Main replication function. Supports both SFTP (remote) and local disk-to-disk modes.
-    
+
     Returns:
         True if replication and verification succeeded, False otherwise
     """
@@ -1623,7 +1754,7 @@ def replicate() -> bool:
             logger.error("Cannot proceed without SSH connection")
             return False
 
-        if not check_local_path(REMOTE_DIR, 'Source'):
+        if not check_local_path_with_retry(REMOTE_DIR, 'Source'):
             return False
 
         # Compute the actual remote landing directory up front.
@@ -1659,6 +1790,9 @@ def replicate() -> bool:
             logger.error("No files found in source directory or error occurred")
             return False
 
+        if not preflight_sidecar_check(source_orphans, source_is_local=True):
+            return False
+
         # Push: src is local, dst is remote (no local Path object needed)
         dst_remote = f"{REMOTE_USER}@{REMOTE_HOST_ALIAS}:{LOCAL_DIR}"
         return_code, duration = run_rsync_transfer(REMOTE_DIR, Path(LOCAL_DIR), source_size_bytes,
@@ -1685,13 +1819,16 @@ def replicate() -> bool:
 
     elif USE_LOCAL:
         # ── Local mode: no SSH needed ────────────────────────────────────────
-        if not check_local_path(REMOTE_DIR, 'Source'):
+        if not check_local_path_with_retry(REMOTE_DIR, 'Source'):
             return False
 
         source_manifest, source_size_bytes, source_orphans = get_local_stats(REMOTE_DIR)
 
         if not source_manifest:
             logger.error("No files found in source directory or error occurred")
+            return False
+
+        if not preflight_sidecar_check(source_orphans, source_is_local=True):
             return False
 
         local_path = Path(LOCAL_DIR)
@@ -1704,6 +1841,15 @@ def replicate() -> bool:
         # For local rsync, use the source path directly (no host prefix)
         src = REMOTE_DIR
         return_code, duration = run_rsync_transfer(src, local_path, source_size_bytes)
+
+        if return_code != 0:
+            logger.error("Rsync transfer failed — skipping verification")
+            if not Path(REMOTE_DIR).exists():
+                logger.error(
+                    f"{Colors.RED}  Source path is no longer accessible: {REMOTE_DIR}{Colors.RESET}"
+                )
+                logger.error("  Remount the drive and re-run srd with --resume to complete the transfer.")
+            return False
 
         # Verify integrity locally
         stats = verify_integrity(local_path, source_manifest, source_size_bytes, duration, source_orphans)
@@ -1728,6 +1874,9 @@ def replicate() -> bool:
             logger.error("No files found on remote server or error occurred")
             return False
 
+        if not preflight_sidecar_check(source_orphans, source_is_local=False):
+            return False
+
         local_path = Path(LOCAL_DIR)
         local_path.mkdir(parents=True, exist_ok=True)
 
@@ -1737,6 +1886,11 @@ def replicate() -> bool:
 
         src = f"{REMOTE_USER}@{REMOTE_HOST_ALIAS}:{REMOTE_DIR}"
         return_code, duration = run_rsync_transfer(src, local_path, source_size_bytes)
+
+        if return_code != 0:
+            logger.error("Rsync transfer failed — skipping verification")
+            logger.error("  Check your SSH connection and re-run srd with --resume to complete the transfer.")
+            return False
 
         # Verify integrity locally
         stats = verify_integrity(local_path, source_manifest, source_size_bytes, duration, source_orphans)
@@ -1806,7 +1960,7 @@ def main():
         Y  = Colors.YELLOW
         DM = Colors.DIM
         print(f'{B}{P}' + '='*58 + f'{R}')
-        print(f'{B}{P}  srd — SMPL Replicate Directory  v1.1{R}')
+        print(f'{B}{P}  srd — SMPL Replicate Directory  v1.2{R}')
         print(f'{B}{P}  Stanford Media Preservation Lab{R}')
         print(f'{B}{P}' + '='*58 + f'{R}')
         print()
@@ -1850,7 +2004,7 @@ def main():
     # ── --version / -v ────────────────────────────────────────────────────────
     if any(arg in sys.argv[1:] for arg in ['--version', '-v']):
         _plat = 'macOS' if IS_MACOS else 'Ubuntu 24.04'
-        print(f'srd v1.1 -- May 2026 ({_plat})')
+        print(f'srd v1.2 -- September 2026 ({_plat})')
         print('Stanford Media Preservation Lab')
         sys.exit(0)
 
@@ -1970,7 +2124,7 @@ def main():
     SCRIPT_HEADER = f"""=========================
 Stanford Media Preservation Lab
 SMPL Replicate Directory (srd)
-v1.1 -- May 2026 ({_platform_label})
+v1.2 -- September 2026 ({_platform_label})
 ========================="""
     print(SCRIPT_HEADER)
     print()
