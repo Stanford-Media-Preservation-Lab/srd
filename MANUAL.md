@@ -523,3 +523,9 @@ If you see a `SyntaxError` referencing an f-string, your Python version is too o
 ---
 
 *srd is an internal tool of the Stanford Media Preservation Lab. For questions or to report issues, contact the Lab's digital preservation staff.*
+
+---
+
+## Version history
+
+See [CHANGELOG.md](CHANGELOG.md) for a full list of changes by version.
