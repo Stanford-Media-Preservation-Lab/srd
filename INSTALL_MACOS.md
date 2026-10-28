@@ -1,6 +1,6 @@
 # Installing srd on macOS
 
-**srd v1.2 — September 2026**
+**srd v1.3 — October 2026**
 
 ---
 

@@ -2,7 +2,7 @@
 ## User Manual
 
 **Stanford Media Preservation Lab**
-Version 1.2 — September 2026
+Version 1.3 — October 2026
 
 ---
 

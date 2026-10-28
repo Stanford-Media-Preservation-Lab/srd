@@ -1,7 +1,7 @@
 # srd
 
 **srd** — SMPL Replicate Directory
-**v1.2 — September 2026**
+**v1.3 — October 2026**
 
 A command-line tool for secure file replication with MD5 integrity verification, developed for the Stanford Media Preservation Lab. Designed for digital preservation workflows where confirming that every file arrived completely and without corruption is as important as the transfer itself.
 

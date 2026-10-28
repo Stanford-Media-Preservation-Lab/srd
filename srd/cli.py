@@ -2026,7 +2026,7 @@ def main():
         Y  = Colors.YELLOW
         DM = Colors.DIM
         print(f'{B}{P}' + '='*58 + f'{R}')
-        print(f'{B}{P}  srd — SMPL Replicate Directory  v1.2{R}')
+        print(f'{B}{P}  srd — SMPL Replicate Directory  v1.3{R}')
         print(f'{B}{P}  Stanford Media Preservation Lab{R}')
         print(f'{B}{P}' + '='*58 + f'{R}')
         print()
@@ -2070,7 +2070,7 @@ def main():
     # ── --version / -v ────────────────────────────────────────────────────────
     if any(arg in sys.argv[1:] for arg in ['--version', '-v']):
         _plat = 'macOS' if IS_MACOS else 'Ubuntu 24.04'
-        print(f'srd v1.2 -- September 2026 ({_plat})')
+        print(f'srd v1.3 -- October 2026 ({_plat})')
         print('Stanford Media Preservation Lab')
         sys.exit(0)
 
@@ -2198,7 +2198,7 @@ def main():
     SCRIPT_HEADER = f"""=========================
 Stanford Media Preservation Lab
 SMPL Replicate Directory (srd)
-v1.2 -- September 2026 ({_platform_label})
+v1.3 -- October 2026 ({_platform_label})
 ========================="""
     print(SCRIPT_HEADER)
     print()

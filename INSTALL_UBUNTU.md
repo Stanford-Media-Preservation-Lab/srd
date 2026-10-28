@@ -1,6 +1,6 @@
 # Installing srd on Ubuntu 24.04
 
-**srd v1.1 — May 2026**
+**srd v1.3 — October 2026**
 
 ---
 

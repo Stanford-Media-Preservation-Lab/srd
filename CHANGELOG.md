@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.3 — October 2026
 
 - Server hostname is now read from the `SRD_REMOTE_HOST` environment variable instead of being hardcoded; srd exits with a clear message if it (or `SRD_REMOTE_USER`) is unset in SFTP/push modes
 - Documentation and examples use placeholder hostnames, usernames and paths
