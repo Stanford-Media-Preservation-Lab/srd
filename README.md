@@ -159,7 +159,7 @@ sudo rm -f /opt/homebrew/bin/srd
 
 ## About
 
-Developed at the [Stanford Media Preservation Lab](https://library.stanford.edu/libraries/media-preservation-lab) for internal use in digitization and preservation workflows.
+Developed at the [Stanford Media Preservation Lab](https://digitization.library.stanford.edu/labs/stanford-media-preservation-lab) for internal use in digitization and preservation workflows.
 
 ## License
 
