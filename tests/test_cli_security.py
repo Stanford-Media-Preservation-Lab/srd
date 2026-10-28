@@ -147,3 +147,54 @@ class TestRemoteVerifyScript:
         # every file verified, none reported as mismatched
         assert stats.verified_count == len(names)
         assert stats.checksum_mismatches == []
+
+
+class TestRsyncChmod:
+    def test_default_777_is_unchanged_legacy_value(self):
+        assert cli.rsync_chmod_for_mode("777") == "Du=rwx,Dgo=rwx,Fu=rwx,Fgo=rwx"
+        assert cli.rsync_chmod_for_mode("0777") == "Du=rwx,Dgo=rwx,Fu=rwx,Fgo=rwx"
+
+    @pytest.mark.parametrize("mode,expected", [
+        ("775", "D775,F664"),
+        ("770", "D770,F660"),
+        ("755", "D755,F644"),
+        ("2770", "D2770,F660"),
+        ("2775", "D2775,F664"),
+    ])
+    def test_other_modes_strip_execute_from_files(self, mode, expected):
+        assert cli.rsync_chmod_for_mode(mode) == expected
+
+    def test_invalid_mode_exits(self):
+        with pytest.raises(SystemExit):
+            cli.rsync_chmod_for_mode("rwx")
+
+    @pytest.mark.parametrize("mode,dir_perm,file_perm", [
+        ("777", 0o777, 0o777),
+        ("775", 0o775, 0o664),
+        ("770", 0o770, 0o660),
+    ])
+    def test_real_rsync_applies_permissions(self, tmp_path, mode, dir_perm, file_perm):
+        import shutil
+        import subprocess
+
+        if not shutil.which("rsync"):
+            pytest.skip("rsync not installed")
+        src = tmp_path / "src"
+        (src / "sub").mkdir(parents=True)
+        (src / "a.mov").write_bytes(b"x")
+        (src / "sub" / "b.mov").write_bytes(b"y")
+        os.chmod(src / "a.mov", 0o600)
+        dst = tmp_path / "dst"
+        dst.mkdir()
+        old_umask = os.umask(0)
+        try:
+            subprocess.run(
+                ["rsync", "-a", "--no-owner", "--no-group", "--omit-dir-times",
+                 f"--chmod={cli.rsync_chmod_for_mode(mode)}", str(src), str(dst)],
+                check=True,
+            )
+        finally:
+            os.umask(old_umask)
+        assert (dst / "src" / "sub").stat().st_mode & 0o777 == dir_perm
+        assert (dst / "src" / "a.mov").stat().st_mode & 0o777 == file_perm
+        assert (dst / "src" / "sub" / "b.mov").stat().st_mode & 0o777 == file_perm

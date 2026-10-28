@@ -17,7 +17,7 @@ A command-line tool for secure file replication with MD5 integrity verification,
 - **Companion output files:** timestamped `.log`, directory `.tree`, and optional `.csv` file list
 - **Duo 2FA support:** SSH ControlMaster on both macOS and Ubuntu for two-factor authentication
 - **Cross-platform:** single codebase for macOS and Ubuntu 24.04
-- **Optional `SRD_DEST_MODE`:** permissions for folders created with `--push --create-dest` (default `777`)
+- **Optional `SRD_DEST_MODE`:** permissions for pushed folders and files (default `777`, fully open, as before)
 - **Environment variable config:** set `SRD_REMOTE_HOST`, `SRD_REMOTE_USER` and `SRD_LOG_DIR` in `.zshrc` — no script editing needed after install
 
 ---

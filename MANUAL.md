@@ -82,7 +82,7 @@ export SRD_REMOTE_USER="your_username"           # Your username on the remote s
 export SRD_LOG_DIR="/Users/yourname/Desktop/srd_logs"   # Where log files and tree files are saved
 ```
 
-`SRD_REMOTE_HOST` and `SRD_REMOTE_USER` are only needed for SFTP and push modes; `--local` copies do not use them. Optionally, `SRD_DEST_MODE` sets the permissions given to a folder created with `--push --create-dest` (default `777`; use `775` or `770` with a shared group to tighten it).
+`SRD_REMOTE_HOST` and `SRD_REMOTE_USER` are only needed for SFTP and push modes; `--local` copies do not use them. Optionally, `SRD_DEST_MODE` sets the permissions for everything pushed to the server (default `777`, fully open to everyone, as in earlier versions). With any other value, folders get that mode (for example `775`, or `2770` to also make new items inherit the folder's group) and files get the same mode without execute bits (`775` → `664`, `2770` → `660`). It applies to the folder created by `--create-dest` and to everything rsync copies into it. Use `775` or `770` once a shared group exists on the server.
 
 The SSH ControlMaster socket lives in `~/.ssh/srd_ctl_<host>` (private to your account) and is a constant in the script that should be left as-is.
 

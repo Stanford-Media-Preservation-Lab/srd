@@ -66,6 +66,21 @@ def validate_dest_mode(mode: str) -> str:
     return mode
 
 
+def rsync_chmod_for_mode(mode: str) -> str:
+    """
+    Build the rsync --chmod value for a push, from SRD_DEST_MODE.
+
+    777 (the default, also written 0777) keeps the long-standing behaviour: every
+    directory and file fully open (rwx) for everyone, including execute on files.
+    Any other mode applies to directories as given (e.g. 775, 2770); files get the
+    same mode without execute or special bits (775 -> 664, 2770 -> 660).
+    """
+    perm = int(validate_dest_mode(mode), 8)
+    if perm == 0o777:
+        return "Du=rwx,Dgo=rwx,Fu=rwx,Fgo=rwx"
+    return f"D{perm:o},F{perm & 0o666:o}"
+
+
 def ensure_control_dir() -> None:
     """Create the directory that holds the SSH control socket, private to this user."""
     os.makedirs(os.path.dirname(CONTROL_SOCKET), mode=0o700, exist_ok=True)
@@ -966,17 +981,19 @@ def run_rsync_transfer(src: str, dst: Path, total_bytes: int = 0, remote_dst: st
 
     # Push mode: set open permissions on server so colleagues can access the files.
     # --no-owner / --no-group: don't attempt to preserve ownership (avoids permission errors).
-    # --chmod: make all directories and files fully readable/writable/executable by everyone.
+    # --chmod: permissions for everything pushed, from SRD_DEST_MODE (default 777 = fully open
+    #   to everyone, as before; see rsync_chmod_for_mode).
     # --omit-dir-times: don't try to set directory timestamps — requires ownership of the
     #   directory which we don't have on the staging server's parent dirs.
     if USE_PUSH:
+        chmod_arg = f'--chmod={rsync_chmod_for_mode(DEST_MODE)}'
         rsync_cmd.extend([
             '--no-owner',
             '--no-group',
             '--omit-dir-times',
-            '--chmod=Du=rwx,Dgo=rwx,Fu=rwx,Fgo=rwx',
+            chmod_arg,
         ])
-        logger.info(f"{Colors.YELLOW}Push mode: setting open permissions on server (--no-owner --no-group --omit-dir-times --chmod=Du=rwx,Dgo=rwx,Fu=rwx,Fgo=rwx){Colors.RESET}")
+        logger.info(f"{Colors.YELLOW}Push mode: setting permissions on server (--no-owner --no-group --omit-dir-times {chmod_arg}){Colors.RESET}")
 
     # Role code filter: only transfer files whose stem ends with _{ROLE_CODE}.
     # Directories must be included first so rsync traverses nested subdirs.
@@ -2154,7 +2171,7 @@ def main():
     if not USE_LOCAL:
         require_remote_config()
 
-    if USE_CREATE_DEST:
+    if USE_PUSH:
         validate_dest_mode(DEST_MODE)
 
     # ── Log / tree / CSV filenames ────────────────────────────────────────────

@@ -5,7 +5,7 @@
 - Server hostname is now read from the `SRD_REMOTE_HOST` environment variable instead of being hardcoded; srd exits with a clear message if it (or `SRD_REMOTE_USER`) is unset in SFTP/push modes
 - Documentation and examples use placeholder hostnames, usernames and paths
 - Fix stale install URL in `INSTALL_UBUNTU.md`
-- New optional `SRD_DEST_MODE` env var sets the permissions of folders created by `--push --create-dest` (default remains `777`)
+- New optional `SRD_DEST_MODE` env var sets the permissions of everything pushed to the server: the folder created by `--push --create-dest` and the files/folders rsync copies into it (default remains `777`, exactly as before; other modes give files the same mode without execute bits)
 - Security: remote paths and filenames are now shell-quoted in all commands run on the server (previously a space, `;` or `'` in a path or filename could break or alter the command)
 - SSH control socket moved from `/tmp` to `~/.ssh/` (private to the user). **Run `srd --open-ssh` again after upgrading.**
 - Fix: remote statistics script had a bash syntax error (`[[` without spaces); fixed
