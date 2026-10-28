@@ -22,17 +22,34 @@ from datetime import datetime
 IS_MACOS = sys.platform == "darwin"
 
 # --- Fixed Configuration (edit these as needed) ---
-REMOTE_HOST_ALIAS = "sul-smpl.stanford.edu"  # SSH hostname — update if needed
+REMOTE_HOST_ALIAS = "YOUR_SERVER_HOSTNAME"  # ← fallback if SRD_REMOTE_HOST env var is not set
 
 REMOTE_USER    = "YOUR_SERVER_USERNAME"   # ← fallback if SRD_REMOTE_USER env var is not set
 CONTROL_SOCKET = "/tmp/srd_ctl_%h"        # leave as-is
 LOG_DIR        = "/path/to/your/srd_logs" # ← fallback if SRD_LOG_DIR env var is not set
 
 # Override config with environment variables if set.
-# Add both to ~/.zshrc on each machine:
-#   export SRD_REMOTE_USER="mangelet"
-#   export SRD_LOG_DIR="/Users/mangelet/Desktop/srd_logs"
+# Add these to ~/.zshrc on each machine:
+#   export SRD_REMOTE_HOST="your-server-hostname"
+#   export SRD_REMOTE_USER="your_username"
+#   export SRD_LOG_DIR="/Users/yourname/Desktop/srd_logs"
+REMOTE_HOST_ALIAS = os.environ.get("SRD_REMOTE_HOST", REMOTE_HOST_ALIAS)
 REMOTE_USER = os.environ.get("SRD_REMOTE_USER", REMOTE_USER)
+
+
+def require_remote_config() -> None:
+    """Exit with a clear message if the server host/user have not been configured."""
+    missing = []
+    if REMOTE_HOST_ALIAS.startswith("YOUR_"):
+        missing.append('SRD_REMOTE_HOST="your-server-hostname"')
+    if REMOTE_USER.startswith("YOUR_"):
+        missing.append('SRD_REMOTE_USER="your_username"')
+    if missing:
+        print("Error: srd is not configured for server transfers. Set these in ~/.zshrc (or ~/.bashrc):")
+        for m in missing:
+            print(f"  export {m}")
+        print("Disk-to-disk copies with --local do not need them.")
+        sys.exit(1)
 LOG_DIR     = os.environ.get("SRD_LOG_DIR",     LOG_DIR)
 
 # --- ANSI Color Codes ---
@@ -1768,7 +1785,7 @@ def replicate() -> bool:
             return False
 
         # Create the specific subdirectory for this batch if requested.
-        # We create and chmod remote_actual_dest (e.g. /pool0/smpl2/batch_name),
+        # We create and chmod remote_actual_dest (e.g. /path/on/server/batch_name),
         # NOT LOCAL_DIR (the parent) which we don't own and can't chmod.
         if USE_CREATE_DEST:
             logger.info(f"{Colors.CYAN}Creating destination directory on server: {remote_actual_dest}{Colors.RESET}")
@@ -1984,21 +2001,21 @@ def main():
             print(f'  {G}{flag:<22}{R}  {desc}')
         print()
         print(f'{B}Examples — pull from server:{R}')
-        print(f'  {C}{W}{R} /pool0/smpl2/digreq-2664 /Users/mangelet/Desktop/copy')
-        print(f'  {C}{W}{R} /pool0/smpl2/digreq-2664 /Users/mangelet/Desktop/copy {Y}--compress{R}')
-        print(f'  {C}{W}{R} /pool0/smpl2/specpat-3574 /Users/mangelet/Desktop/copy {Y}--role pm{R}')
+        print(f'  {C}{W}{R} /path/on/server/request-0001 /Users/yourname/Desktop/copy')
+        print(f'  {C}{W}{R} /path/on/server/request-0001 /Users/yourname/Desktop/copy {Y}--compress{R}')
+        print(f'  {C}{W}{R} /path/on/server/request-0002 /Users/yourname/Desktop/copy {Y}--role pm{R}')
         print()
         print(f'{B}Examples — push to server:{R}')
-        print(f'  {C}{W}{R} /Volumes/Drive/digreq-2664 /pool0/smpl2 {Y}--push{R}')
-        print(f'  {C}{W}{R} /Volumes/Drive/digreq-2664 /pool0/smpl2 {Y}--push --create-dest{R}')
+        print(f'  {C}{W}{R} /Volumes/Drive/request-0001 /path/on/server {Y}--push{R}')
+        print(f'  {C}{W}{R} /Volumes/Drive/request-0001 /path/on/server {Y}--push --create-dest{R}')
         print()
         print(f'{B}Examples — local disk-to-disk:{R}')
         if IS_MACOS:
-            print(f'  {C}{W}{R} /Volumes/MediaDrive/digreq-2664 /Volumes/BackupDrive/copy {Y}--local{R}')
-            print(f'  {C}{W}{R} /Volumes/MediaDrive/digreq-2664 /Volumes/BackupDrive/copy {Y}--local --resume{R}')
+            print(f'  {C}{W}{R} /Volumes/MediaDrive/request-0001 /Volumes/BackupDrive/copy {Y}--local{R}')
+            print(f'  {C}{W}{R} /Volumes/MediaDrive/request-0001 /Volumes/BackupDrive/copy {Y}--local --resume{R}')
         else:
-            print(f'  {C}{W}{R} /media/MediaDrive/digreq-2664 /home/mangelet/copy {Y}--local{R}')
-            print(f'  {C}{W}{R} /media/MediaDrive/digreq-2664 /media/BackupDrive/copy {Y}--local --resume{R}')
+            print(f'  {C}{W}{R} /media/MediaDrive/request-0001 /home/yourname/copy {Y}--local{R}')
+            print(f'  {C}{W}{R} /media/MediaDrive/request-0001 /media/BackupDrive/copy {Y}--local --resume{R}')
         print(f'{B}{P}' + '='*58 + f'{R}')
 
     # ── --version / -v ────────────────────────────────────────────────────────
@@ -2015,6 +2032,7 @@ def main():
 
     # ── --open-ssh: open persistent SSH session for Duo 2FA ──────────────────
     if '--open-ssh' in sys.argv[1:]:
+        require_remote_config()
         socket_path = CONTROL_SOCKET.replace('%h', REMOTE_HOST_ALIAS)
         print(f'Opening persistent SSH connection to {REMOTE_USER}@{REMOTE_HOST_ALIAS}...')
         print('Please complete the Duo prompt. Leave this terminal open while srd runs.')
@@ -2099,6 +2117,9 @@ def main():
     if USE_CREATE_DEST and not USE_PUSH:
         print("Error: --create-dest is only valid with --push")
         sys.exit(1)
+
+    if not USE_LOCAL:
+        require_remote_config()
 
     # ── Log / tree / CSV filenames ────────────────────────────────────────────
     remote_dir_name = Path(REMOTE_DIR).name

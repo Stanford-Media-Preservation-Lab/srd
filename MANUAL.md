@@ -50,7 +50,7 @@ srd wraps `rsync` for the transfer itself and adds pre-flight path validation, a
 - **Python 3.9 or later** — check with `python3 --version`. On macOS, update via `brew upgrade python` if needed.
 - **rsync** — built into macOS; available by default on Ubuntu.
 - **SSH key authentication** configured for the remote server (SFTP and push modes).
-- **Duo two-factor authentication** — required by the Stanford server. Ubuntu users must complete a one-time setup step before each session; see [Ubuntu: SSH and Duo Authentication](#ubuntu-ssh-and-duo-authentication).
+- **Duo two-factor authentication** — required by the remote server. Ubuntu users must complete a one-time setup step before each session; see [Ubuntu: SSH and Duo Authentication](#ubuntu-ssh-and-duo-authentication).
 - **Sufficient free disk space** at the destination — srd checks this before starting and requires a 10% safety margin.
 
 ---
@@ -74,22 +74,17 @@ srd --help
 
 ## Configuration
 
-Two constants near the top of the script must be set before first use. Open `srd.py` in a text editor:
+srd reads its settings from environment variables, so the script never needs editing. Add these to `~/.zshrc` (or `~/.bashrc` on Ubuntu):
 
-```python
-# --- Fixed Configuration (edit these as needed) ---
-REMOTE_HOST_ALIAS = "sul-smpl.stanford.edu"   # SSH hostname for the remote server
-LOG_DIR = "/Users/dav1/Desktop/srd_logs"       # Where log files and tree files are saved
+```bash
+export SRD_REMOTE_HOST="your-server-hostname"   # SSH hostname of the remote server
+export SRD_REMOTE_USER="your_username"           # Your username on the remote server
+export SRD_LOG_DIR="/Users/yourname/Desktop/srd_logs"   # Where log files and tree files are saved
 ```
 
-**On Ubuntu**, two additional constants are present:
+`SRD_REMOTE_HOST` and `SRD_REMOTE_USER` are only needed for SFTP and push modes; `--local` copies do not use them. The SSH ControlMaster socket path (`/tmp/srd_ctl_%h`) is a constant in the script and should be left as-is.
 
-```python
-REMOTE_USER    = "smpl-5220r"           # Your username on the remote server
-CONTROL_SOCKET = "/tmp/srd_ctl_%h"      # SSH ControlMaster socket path
-```
-
-`LOG_DIR` will be created automatically if it does not exist.
+`SRD_LOG_DIR` will be created automatically if it does not exist.
 
 ---
 
@@ -106,7 +101,7 @@ srd <SOURCE_DIR> <DEST_DIR> [OPTIONS]
 Arguments containing spaces must be quoted:
 
 ```bash
-srd '/Volumes/SMPL RAID/batch_01' '/Volumes/dav1_read/260223'
+srd '/Volumes/SMPL RAID/batch_01' '/Volumes/drive_read/260223'
 ```
 
 ---
@@ -118,9 +113,9 @@ srd '/Volumes/SMPL RAID/batch_01' '/Volumes/dav1_read/260223'
 **Pull files from the remote server to a local destination.** This is the default mode — no flag is required.
 
 ```bash
-srd /pool0/smpl2/digreq-2664 /Volumes/dav1_read/260219
-srd /pool0/smpl2/digreq-2664 /Volumes/dav1_read/260219 --compress
-srd /pool0/smpl2/digreq-2664 /Volumes/dav1_read/260219 --resume
+srd /path/on/server/request-0001 /Volumes/drive_read/260219
+srd /path/on/server/request-0001 /Volumes/drive_read/260219 --compress
+srd /path/on/server/request-0001 /Volumes/drive_read/260219 --resume
 ```
 
 - The first argument is the path on the remote server.
@@ -135,7 +130,7 @@ srd /pool0/smpl2/digreq-2664 /Volumes/dav1_read/260219 --resume
 **Copy files between two local directories or attached drives.** No network connection or SSH session is required.
 
 ```bash
-srd /Volumes/SMPL_RAID_SHUTTLE/digreq-2664 /Volumes/dav1_read/260219 --local
+srd /Volumes/SMPL_RAID_SHUTTLE/request-0001 /Volumes/drive_read/260219 --local
 srd /Volumes/SourceDrive/batch /Volumes/BackupDrive/batch --local --resume
 ```
 
@@ -151,17 +146,17 @@ srd /Volumes/SourceDrive/batch /Volumes/BackupDrive/batch --local --resume
 **Send files from a local source to the remote server.** This is the reverse of SFTP mode.
 
 ```bash
-srd /Volumes/SMPL_RAID_SHUTTLE/digreq-2664 /pool0/smpl2 --push
-srd /Volumes/SMPL_RAID_SHUTTLE/digreq-2664 /pool0/smpl2 --push --create-dest
+srd /Volumes/SMPL_RAID_SHUTTLE/request-0001 /path/on/server --push
+srd /Volumes/SMPL_RAID_SHUTTLE/request-0001 /path/on/server --push --create-dest
 ```
 
 - The first argument is the local source directory.
 - The second argument is the parent directory on the server. The source folder itself is copied into this location, so files land at `<DEST_DIR>/<source_folder_name>/` on the server. For example:
 
   ```
-  srd /Volumes/drive/digreq-2664 /pool0/smpl2 --push
+  srd /Volumes/drive/request-0001 /path/on/server --push
   ```
-  Files land at `/pool0/smpl2/digreq-2664/` on the server.
+  Files land at `/path/on/server/request-0001/` on the server.
 
 - The destination parent directory must already exist on the server unless `--create-dest` is used.
 - All files and directories written to the server receive open (`rwx`) permissions so that all team members can access them.
@@ -173,10 +168,10 @@ srd /Volumes/SMPL_RAID_SHUTTLE/digreq-2664 /pool0/smpl2 --push --create-dest
 If the target subdirectory does not yet exist on the server, add `--create-dest`:
 
 ```bash
-srd /Volumes/drive/specpat-3496 /pool0/smpl2 --push --create-dest
+srd /Volumes/drive/request-0003 /path/on/server --push --create-dest
 ```
 
-This creates `/pool0/smpl2/specpat-3496/` on the server with open `rwx` permissions before the transfer begins. It does not attempt to modify the parent directory (`/pool0/smpl2/`), which you may not own.
+This creates `/path/on/server/request-0003/` on the server with open `rwx` permissions before the transfer begins. It does not attempt to modify the parent directory (`/path/on/server/`), which you may not own.
 
 `--create-dest` is only valid with `--push` and will produce an error if used alone.
 
@@ -197,7 +192,7 @@ This creates `/pool0/smpl2/specpat-3496/` on the server with open `rwx` permissi
 
 ## Ubuntu: SSH and Duo Authentication
 
-The Stanford staging server requires Duo two-factor authentication, which cannot be handled automatically by a script. srd solves this using SSH ControlMaster: you authenticate once interactively, and all subsequent SSH connections and rsync operations reuse that session transparently.
+The staging server requires Duo two-factor authentication, which cannot be handled automatically by a script. srd solves this using SSH ControlMaster: you authenticate once interactively, and all subsequent SSH connections and rsync operations reuse that session transparently.
 
 **Before running any SFTP or push transfer on Ubuntu, open a persistent SSH session:**
 
@@ -210,7 +205,7 @@ This will display the Duo prompt. Approve it (option 1 for a Duo Push is typical
 You can then run srd normally in any terminal:
 
 ```bash
-srd /pool0/smpl2/digreq-2664 /media/smpl-5220r/RAID_1/260219
+srd /path/on/server/request-0001 /media/yourname/RAID_1/260219
 ```
 
 **The control socket does not survive a reboot.** After restarting your Ubuntu workstation, run `srd --open-ssh` again before your first transfer of the session.
@@ -218,7 +213,7 @@ srd /pool0/smpl2/digreq-2664 /media/smpl-5220r/RAID_1/260219
 If you forget and run srd without opening the session first, you will see a clear error:
 
 ```
-✗ SSH control socket not found: /tmp/srd_ctl_sul-smpl.stanford.edu
+✗ SSH control socket not found: /tmp/srd_ctl_server.example.edu
   Run: srd --open-ssh
 ```
 
@@ -332,8 +327,8 @@ CHECK 2: Intact transfer (MD5 verification)
   ✓ PASS — All 1592 verified file(s) match their MD5 sidecars.
   ✓ All source files have .md5 sidecars.
 CHECK 3: Documentation
-  ✓ Full log written to:  /Users/dav1/srd_logs/digreq-2664_20260223_090900_replication.log
-  ✓ Directory tree saved: /Users/dav1/srd_logs/digreq-2664_20260223_090900_source.tree
+  ✓ Full log written to:  /Users/yourname/srd_logs/request-0001_20260223_090900_replication.log
+  ✓ Directory tree saved: /Users/yourname/srd_logs/request-0001_20260223_090900_source.tree
 ============================================================
 ✓ SUCCESS — Transfer complete and verified.
 ============================================================
@@ -357,10 +352,10 @@ CHECK 1: Complete transfer
   ✗ FAIL — File count mismatch: source=3184, dest=3180 (-4).
             Hidden files (.*) are excluded from both counts.
   ✗ FAIL — 4 source file(s) not found at destination:
-    → Reel_03/digreq-2664_reel03_002.mov
-    → Reel_03/digreq-2664_reel03_002.mov.md5
-    → Reel_07/digreq-2664_reel07_011.mov
-    → Reel_07/digreq-2664_reel07_011.mov.md5
+    → Reel_03/request-0001_reel03_002.mov
+    → Reel_03/request-0001_reel03_002.mov.md5
+    → Reel_07/request-0001_reel07_011.mov
+    → Reel_07/request-0001_reel07_011.mov.md5
 ```
 
 **Checksum failures** are also listed individually (up to 100):
@@ -368,7 +363,7 @@ CHECK 1: Complete transfer
 ```
 CHECK 2: Intact transfer (MD5 verification)
   ✗ FAIL — 1 file(s) failed MD5 verification:
-    → Reel_05/digreq-2664_reel05_003.mov
+    → Reel_05/request-0001_reel05_003.mov
 ```
 
 If more than 100 anomalies of a single type are found, srd notes the total and flags it as a systemic issue requiring investigation rather than listing every filename.
@@ -390,8 +385,8 @@ If more than 100 anomalies of a single type are found, srd notes the total and f
 Every run produces two files in `LOG_DIR`, named with the source folder name and a timestamp:
 
 ```
-digreq-2664_20260223_090900_replication.log
-digreq-2664_20260223_090900_source.tree
+request-0001_20260223_090900_replication.log
+request-0001_20260223_090900_source.tree
 ```
 
 ### Log file
@@ -410,16 +405,16 @@ The `.log` file contains the complete run record: startup parameters, pre-flight
 The `.tree` file shows the complete folder and file structure of the source directory at the time of transfer, with file sizes. This allows staff to quickly review what was included in a batch and spot missing components such as an absent derivative file.
 
 ```
-Source directory tree: /Volumes/SMPL_RAID_SHUTTLE/digreq-2664
+Source directory tree: /Volumes/SMPL_RAID_SHUTTLE/request-0001
 Generated: 2026-02-23 09:09:17
 ============================================================
-/Volumes/SMPL_RAID_SHUTTLE/digreq-2664
+/Volumes/SMPL_RAID_SHUTTLE/request-0001
 ├── Reel_01/
-│   ├── digreq-2664_reel01_001.mov  [74.2GB]
-│   └── digreq-2664_reel01_001.mov.md5  [72.0B]
+│   ├── request-0001_reel01_001.mov  [74.2GB]
+│   └── request-0001_reel01_001.mov.md5  [72.0B]
 ├── Reel_02/
-│   ├── digreq-2664_reel02_001.mov  [52.8GB]
-│   └── digreq-2664_reel02_001.mov.md5  [72.0B]
+│   ├── request-0001_reel02_001.mov  [52.8GB]
+│   └── request-0001_reel02_001.mov.md5  [72.0B]
 
 2 directories, 4 files
 ```
@@ -436,7 +431,7 @@ If a transfer is interrupted — by a network drop, system sleep, manual cancell
 
 ```bash
 srd --open-ssh
-srd /pool0/smpl2/digreq-2664 /media/smpl-5220r/RAID_1/260219 --resume
+srd /path/on/server/request-0001 /media/yourname/RAID_1/260219 --resume
 ```
 
 **Without `--resume`** (default): rsync skips files that already exist at the destination and are complete. Any file that was mid-transfer when the interruption occurred will be deleted and restarted.
@@ -486,10 +481,10 @@ Also note: hidden files (names beginning with `.`, such as `.DS_Store`) are excl
 This occurs when srd tries to `chmod` a directory you did not create. Ensure you are providing the **parent** directory as the destination argument — srd will create and set permissions on the new subdirectory (named after your source folder) inside it. It will never attempt to modify the parent.
 
 ```bash
-# Correct: /pool0/smpl2 is the parent you have write access to
-srd /Volumes/drive/digreq-2664 /pool0/smpl2 --push --create-dest
+# Correct: /path/on/server is the parent you have write access to
+srd /Volumes/drive/request-0001 /path/on/server --push --create-dest
 
-# This creates /pool0/smpl2/digreq-2664/ with open permissions
+# This creates /path/on/server/request-0001/ with open permissions
 ```
 
 ### ETA shows --:--:-- during transfer
@@ -516,7 +511,7 @@ If you see a `SyntaxError` referencing an f-string, your Python version is too o
 
 **Verification time estimate.** Remote verification in push mode depends on server-side disk read speed, not network speed — only a 32-character hash travels back over the wire per file. At typical staging server speeds (~300 MB/s sustained read), expect roughly 3–6 minutes of verification time per 100 GB of data.
 
-**File naming.** srd does not rename, reorganize, or modify any files. The destination directory structure mirrors the source exactly. rsync copies the source folder itself into the destination, so a source folder named `digreq-2664` will appear as a subfolder at the destination.
+**File naming.** srd does not rename, reorganize, or modify any files. The destination directory structure mirrors the source exactly. rsync copies the source folder itself into the destination, so a source folder named `request-0001` will appear as a subfolder at the destination.
 
 **Concurrent runs.** Running multiple instances of srd simultaneously to the same destination is not recommended and may produce unreliable file count comparisons in the final report.
 

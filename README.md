@@ -17,7 +17,7 @@ A command-line tool for secure file replication with MD5 integrity verification,
 - **Companion output files:** timestamped `.log`, directory `.tree`, and optional `.csv` file list
 - **Duo 2FA support:** SSH ControlMaster on both macOS and Ubuntu for two-factor authentication
 - **Cross-platform:** single codebase for macOS and Ubuntu 24.04
-- **Environment variable config:** set `SRD_REMOTE_USER` and `SRD_LOG_DIR` in `.zshrc` — no script editing needed after install
+- **Environment variable config:** set `SRD_REMOTE_HOST`, `SRD_REMOTE_USER` and `SRD_LOG_DIR` in `.zshrc` — no script editing needed after install
 
 ---
 
@@ -45,9 +45,10 @@ See [INSTALL_MACOS.md](INSTALL_MACOS.md) or [INSTALL_UBUNTU.md](INSTALL_UBUNTU.m
 
 ## Configuration
 
-No script editing required. Add two lines to `~/.zshrc` on each machine:
+No script editing required. Add three lines to `~/.zshrc` on each machine (your sysadmin can give you the server hostname):
 
 ```bash
+export SRD_REMOTE_HOST="your-server-hostname"
 export SRD_REMOTE_USER="your_server_username"
 export SRD_LOG_DIR="/Users/yourname/Desktop/srd_logs"
 ```
@@ -71,21 +72,21 @@ srd <SOURCE_DIR> <DEST_DIR> [OPTIONS]
 ### Pull files from server
 
 ```bash
-srd /pool0/smpl2/digreq-2664 /Volumes/dav1_read/260219
-srd /pool0/smpl2/specpat-3574 /Volumes/dav1_read/260219 --role pm
+srd /path/on/server/request-0001 /Volumes/drive_read/260219
+srd /path/on/server/request-0002 /Volumes/drive_read/260219 --role pm
 ```
 
 ### Local disk-to-disk copy
 
 ```bash
-srd /Volumes/SMPL_RAID/digreq-2664 /Volumes/BackupDrive/copy --local
+srd /Volumes/SMPL_RAID/request-0001 /Volumes/BackupDrive/copy --local
 ```
 
 ### Push files to server
 
 ```bash
-srd /Volumes/SMPL_RAID/digreq-2664 /pool0/smpl2 --push
-srd /Volumes/SMPL_RAID/digreq-2664 /pool0/smpl2 --push --create-dest
+srd /Volumes/SMPL_RAID/request-0001 /path/on/server --push
+srd /Volumes/SMPL_RAID/request-0001 /path/on/server --push --create-dest
 ```
 
 ### Open SSH session first (Duo 2FA — required on both macOS and Ubuntu)
@@ -93,7 +94,7 @@ srd /Volumes/SMPL_RAID/digreq-2664 /pool0/smpl2 --push --create-dest
 ```bash
 srd --open-ssh
 # approve the Duo prompt, then run srd normally in another terminal
-srd /pool0/smpl2/digreq-2664 /Volumes/dav1_read/260219
+srd /path/on/server/request-0001 /Volumes/drive_read/260219
 ```
 
 ---
@@ -120,9 +121,9 @@ srd /pool0/smpl2/digreq-2664 /Volumes/dav1_read/260219
 Every run produces files in your configured log directory:
 
 ```
-digreq-2664_20260507_090900_replication.log   <- full activity log
-digreq-2664_20260507_090900_source.tree       <- directory tree of source
-digreq-2664_20260507_090900_filelist.csv      <- file list (with --csv)
+request-0001_20260507_090900_replication.log   <- full activity log
+request-0001_20260507_090900_source.tree       <- directory tree of source
+request-0001_20260507_090900_filelist.csv      <- file list (with --csv)
 ```
 
 ---

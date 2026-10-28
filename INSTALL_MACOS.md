@@ -62,9 +62,10 @@ srd --version
 
 ## Configuration
 
-No script editing required. Add two lines to `~/.zshrc`:
+No script editing required. Add three lines to `~/.zshrc` (your sysadmin can give you the server hostname):
 
 ```bash
+export SRD_REMOTE_HOST="your-server-hostname"
 export SRD_REMOTE_USER="your_server_username"
 export SRD_LOG_DIR="/Users/yourname/Desktop/srd_logs"
 ```
@@ -75,7 +76,7 @@ Then reload:
 source ~/.zshrc
 ```
 
-`SRD_REMOTE_USER` is your username on the remote server (e.g. `mangelet`).
+`SRD_REMOTE_HOST` is the SSH hostname of the remote server. `SRD_REMOTE_USER` is your username on the remote server (e.g. `jsmith`).
 `SRD_LOG_DIR` is where srd will save log, tree, and CSV files. It will be created automatically if it does not exist.
 
 These variables persist across upgrades — you will never need to edit the script again after setting them.
@@ -84,7 +85,7 @@ These variables persist across upgrades — you will never need to edit the scri
 
 ## Duo two-factor authentication
 
-The Stanford staging server requires Duo two-factor authentication. srd handles this using SSH ControlMaster — you authenticate once interactively, and all subsequent SSH connections and rsync transfers reuse that session.
+The staging server requires Duo two-factor authentication. srd handles this using SSH ControlMaster — you authenticate once interactively, and all subsequent SSH connections and rsync transfers reuse that session.
 
 **Before running any SFTP or push transfer, open a persistent SSH session:**
 
@@ -97,7 +98,7 @@ Approve the Duo prompt (typically option 1 for a push notification). The session
 Run srd normally in any other terminal:
 
 ```bash
-srd /pool0/smpl2/digreq-2664 /Volumes/dav1_read/260219
+srd /path/on/server/request-0001 /Volumes/drive_read/260219
 ```
 
 **The control socket does not survive a reboot.** After restarting your Mac, run `srd --open-ssh` again before your first transfer of the session.

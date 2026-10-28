@@ -40,7 +40,7 @@ which -a srd
 
 ```bash
 pip3 install --break-system-packages pipx   # if pipx is not already installed
-pipx install git+https://github.com/michaelangeletti/smpl-replicate-directory.git
+pipx install git+https://github.com/Stanford-Media-Preservation-Lab/srd.git
 ```
 
 Make sure pipx's bin directory is on your PATH. Add this to `~/.bashrc` or `~/.zshrc` if needed:
@@ -59,9 +59,10 @@ srd --version
 
 ## Configuration
 
-No script editing required. Add two lines to `~/.bashrc` or `~/.zshrc`:
+No script editing required. Add three lines to `~/.bashrc` or `~/.zshrc` (your sysadmin can give you the server hostname):
 
 ```bash
+export SRD_REMOTE_HOST="your-server-hostname"
 export SRD_REMOTE_USER="your_server_username"
 export SRD_LOG_DIR="/home/yourname/srd_logs"
 ```
@@ -72,7 +73,7 @@ Then reload:
 source ~/.bashrc   # or source ~/.zshrc
 ```
 
-`SRD_REMOTE_USER` is your username on the remote server.
+`SRD_REMOTE_HOST` is the SSH hostname of the remote server. `SRD_REMOTE_USER` is your username on the remote server.
 `SRD_LOG_DIR` is where srd will save log, tree, and CSV files. It will be created automatically if it does not exist.
 
 These variables persist across upgrades — you will never need to edit the script again after setting them.
@@ -81,7 +82,7 @@ These variables persist across upgrades — you will never need to edit the scri
 
 ## Duo two-factor authentication
 
-The Stanford staging server requires Duo two-factor authentication. srd handles this using SSH ControlMaster — you authenticate once interactively, and all subsequent SSH connections and rsync transfers reuse that session transparently.
+The staging server requires Duo two-factor authentication. srd handles this using SSH ControlMaster — you authenticate once interactively, and all subsequent SSH connections and rsync transfers reuse that session transparently.
 
 **Before running any SFTP or push transfer, open a persistent SSH session:**
 
@@ -94,7 +95,7 @@ Approve the Duo prompt (typically option 1 for a push notification). The session
 Run srd normally in any other terminal:
 
 ```bash
-srd /pool0/smpl2/digreq-2664 /media/smpl-5220r/RAID_1/260219
+srd /path/on/server/request-0001 /media/yourname/RAID_1/260219
 ```
 
 **The control socket does not survive a reboot.** After restarting your workstation, run `srd --open-ssh` again before your first transfer of the session.

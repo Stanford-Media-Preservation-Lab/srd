@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Server hostname is now read from the `SRD_REMOTE_HOST` environment variable instead of being hardcoded; srd exits with a clear message if it (or `SRD_REMOTE_USER`) is unset in SFTP/push modes
+- Documentation and examples use placeholder hostnames, usernames and paths
+- Fix stale install URL in `INSTALL_UBUNTU.md`
+
 ## v1.2 — September 2026
 
 - Pre-flight sidecar check: warns before transfer if any source files lack `.md5` sidecars; prompts halt or continue
