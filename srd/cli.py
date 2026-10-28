@@ -13,6 +13,7 @@ import time
 import select
 import re
 import hashlib
+import shlex
 from pathlib import Path
 from typing import Optional, Tuple, Set, List, Dict
 from dataclasses import dataclass
@@ -25,7 +26,8 @@ IS_MACOS = sys.platform == "darwin"
 REMOTE_HOST_ALIAS = "YOUR_SERVER_HOSTNAME"  # ← fallback if SRD_REMOTE_HOST env var is not set
 
 REMOTE_USER    = "YOUR_SERVER_USERNAME"   # ← fallback if SRD_REMOTE_USER env var is not set
-CONTROL_SOCKET = "/tmp/srd_ctl_%h"        # leave as-is
+# Per-user location (not world-writable /tmp). ~/.ssh is created with mode 700 if missing.
+CONTROL_SOCKET = os.path.join(os.path.expanduser("~"), ".ssh", "srd_ctl_%h")  # leave as-is
 LOG_DIR        = "/path/to/your/srd_logs" # ← fallback if SRD_LOG_DIR env var is not set
 
 # Override config with environment variables if set.
@@ -35,6 +37,10 @@ LOG_DIR        = "/path/to/your/srd_logs" # ← fallback if SRD_LOG_DIR env var 
 #   export SRD_LOG_DIR="/Users/yourname/Desktop/srd_logs"
 REMOTE_HOST_ALIAS = os.environ.get("SRD_REMOTE_HOST", REMOTE_HOST_ALIAS)
 REMOTE_USER = os.environ.get("SRD_REMOTE_USER", REMOTE_USER)
+# Permissions applied to a destination folder created with --push --create-dest.
+# Default 777 keeps the long-standing behaviour (anyone on the server can read/write);
+# set SRD_DEST_MODE=775 or 770 (with a shared group) to tighten it.
+DEST_MODE = os.environ.get("SRD_DEST_MODE", "777").strip()
 
 
 def require_remote_config() -> None:
@@ -49,6 +55,32 @@ def require_remote_config() -> None:
         for m in missing:
             print(f"  export {m}")
         print("Disk-to-disk copies with --local do not need them.")
+        sys.exit(1)
+
+
+def validate_dest_mode(mode: str) -> str:
+    """Return mode if it is a valid octal permission string (e.g. 775, 2770); otherwise exit."""
+    if not re.fullmatch(r"[0-7]{3,4}", mode):
+        print(f"Error: SRD_DEST_MODE='{mode}' is not a valid octal permission mode (examples: 777, 775, 770, 2770).")
+        sys.exit(1)
+    return mode
+
+
+def ensure_control_dir() -> None:
+    """Create the directory that holds the SSH control socket, private to this user."""
+    os.makedirs(os.path.dirname(CONTROL_SOCKET), mode=0o700, exist_ok=True)
+
+
+def prepare_log_dir() -> None:
+    """Create LOG_DIR, or exit with a clear message if it is unset or cannot be created."""
+    if LOG_DIR.startswith("/path/to/"):
+        print("Error: no log directory configured. Add this to ~/.zshrc (or ~/.bashrc):")
+        print('  export SRD_LOG_DIR="/Users/yourname/Desktop/srd_logs"')
+        sys.exit(1)
+    try:
+        Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"Error: cannot create log directory {LOG_DIR}: {e}")
         sys.exit(1)
 LOG_DIR     = os.environ.get("SRD_LOG_DIR",     LOG_DIR)
 
@@ -244,7 +276,7 @@ def check_remote_path(path: str, label: str) -> bool:
     Verify a remote path exists and is a directory via SSH.
     Prints a clear, actionable error if not.
     """
-    result = run_ssh_command(f'test -d {path} && echo DIR_OK || echo DIR_MISSING', timeout=15)
+    result = run_ssh_command(f'test -d {shlex.quote(path)} && echo DIR_OK || echo DIR_MISSING', timeout=15)
     if result and 'DIR_OK' in result:
         return True
     logger.error(f"{Colors.RED}✗ {label} path not found on server: {path}{Colors.RESET}")
@@ -288,7 +320,7 @@ def get_remote_stats(remote_path: str) -> Tuple[Set[str], int, List[str]]:
     
     # Single SSH command that does everything in one session
     combined_cmd = f"""
-    cd {remote_path} 2>/dev/null || exit 1
+    cd {shlex.quote(remote_path)} 2>/dev/null || exit 1
     
     # List all files (excluding hidden) and calculate total size
     find . -type f ! -path '*/.*' -print0 | 
@@ -297,7 +329,7 @@ def get_remote_stats(remote_path: str) -> Tuple[Set[str], int, List[str]]:
     done
     
     # Calculate total size using actual file sizes (not disk usage)
-    if [["$OSTYPE" == "darwin"*]]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
         total_bytes=$(find . -type f ! -path '*/.*' -exec stat -f%z {{}} + 2>/dev/null | awk '{{sum+=$1}} END {{print sum}}')
     else
         total_bytes=$(find . -type f ! -path '*/.*' -exec stat -c%s {{}} + 2>/dev/null | awk '{{sum+=$1}} END {{print sum}}')
@@ -1195,7 +1227,7 @@ def get_remote_dest_stats(remote_path: str) -> Tuple[Set[str], int, List[str]]:
     logger.info(f"{Colors.CYAN}Gathering destination statistics on server...{Colors.RESET}")
 
     combined_cmd = f"""
-    cd {remote_path} 2>/dev/null || exit 1
+    cd {shlex.quote(remote_path)} 2>/dev/null || exit 1
     find . -type f ! -path '*/.*' -print0 |
     while IFS= read -r -d '' file; do
         echo "FILE:$file"
@@ -1290,15 +1322,15 @@ def verify_remote_integrity(
     # Everything happens in one SSH session — no per-file round-trips.
     dest_base = remote_dest_path.rstrip('/')
     file_list_sh = " ".join(
-        f"'{dest_base}/{f}'" for f in data_files
+        shlex.quote(f"{dest_base}/{f}") for f in data_files
     )
 
     verify_cmd = f"""
-cd {remote_dest_path} 2>/dev/null || {{ echo "CDERR:cannot cd to destination"; exit 1; }}
+cd {shlex.quote(remote_dest_path)} 2>/dev/null || {{ echo "CDERR:cannot cd to destination"; exit 1; }}
 
 verify_file() {{
     local rel="$1"
-    local full="{remote_dest_path.rstrip('/')}/$rel"
+    local full={shlex.quote(remote_dest_path.rstrip('/'))}"/$rel"
     local sidecar="$full.md5"
 
     if [ ! -f "$sidecar" ]; then
@@ -1329,7 +1361,7 @@ verify_file() {{
 # Export function so subshell can use it if needed
 export -f verify_file 2>/dev/null || true
 
-{chr(10).join(f"verify_file '{f}'" for f in data_files)}
+{chr(10).join(f"verify_file {shlex.quote(f)}" for f in data_files)}
 """
 
     # ── Progress bar for remote verification ─────────────────────────────────
@@ -1402,7 +1434,7 @@ export -f verify_file 2>/dev/null || true
             errors='surrogateescape',
         )
     except Exception as exc:
-        logger.error(f"Could not launch SSH verification process: {{exc}}")
+        logger.error(f"Could not launch SSH verification process: {exc}")
         draw_remote_bar(final=True)
         close_remote_bar()
     else:
@@ -1448,7 +1480,7 @@ export -f verify_file 2>/dev/null || true
                     processed += 1
                     last_heartbeat = time.time()
                     close_remote_bar()
-                    logger.error(f"  MD5 MISMATCH on server: {{rel}}")
+                    logger.error(f"  MD5 MISMATCH on server: {rel}")
                     draw_remote_bar()
 
                 elif line.startswith("NOMD5:"):
@@ -1457,7 +1489,7 @@ export -f verify_file 2>/dev/null || true
                     processed += 1
                     last_heartbeat = time.time()
                     close_remote_bar()
-                    logger.warning(f"  No .md5 sidecar on server for: {{rel}}")
+                    logger.warning(f"  No .md5 sidecar on server for: {rel}")
                     draw_remote_bar()
 
                 elif line.startswith("BADSIDECAR:"):
@@ -1466,18 +1498,18 @@ export -f verify_file 2>/dev/null || true
                     processed += 1
                     last_heartbeat = time.time()
                     close_remote_bar()
-                    logger.warning(f"  Unreadable sidecar on server for: {{rel}}")
+                    logger.warning(f"  Unreadable sidecar on server for: {rel}")
                     draw_remote_bar()
 
                 elif line.startswith("CDERR:"):
                     close_remote_bar()
-                    logger.error(f"  Server error: {{line[6:]}}")
+                    logger.error(f"  Server error: {line[6:]}")
 
             if process.stderr in ready:
                 err = process.stderr.readline()
                 if err and err.strip():
                     close_remote_bar()
-                    logger.warning(f"  [ssh stderr] {{err.strip()}}")
+                    logger.warning(f"  [ssh stderr] {err.strip()}")
                     draw_remote_bar()
 
             # Heartbeat: if no output for HEARTBEAT_INTERVAL seconds, refresh the
@@ -1790,7 +1822,7 @@ def replicate() -> bool:
         if USE_CREATE_DEST:
             logger.info(f"{Colors.CYAN}Creating destination directory on server: {remote_actual_dest}{Colors.RESET}")
             mk_result = run_ssh_command(
-                f"mkdir -p '{remote_actual_dest}' && chmod 777 '{remote_actual_dest}'",
+                f"mkdir -p {shlex.quote(remote_actual_dest)} && chmod {validate_dest_mode(DEST_MODE)} {shlex.quote(remote_actual_dest)}",
                 timeout=15,
             )
             if mk_result is None:
@@ -2033,6 +2065,7 @@ def main():
     # ── --open-ssh: open persistent SSH session for Duo 2FA ──────────────────
     if '--open-ssh' in sys.argv[1:]:
         require_remote_config()
+        ensure_control_dir()
         socket_path = CONTROL_SOCKET.replace('%h', REMOTE_HOST_ALIAS)
         print(f'Opening persistent SSH connection to {REMOTE_USER}@{REMOTE_HOST_ALIAS}...')
         print('Please complete the Duo prompt. Leave this terminal open while srd runs.')
@@ -2121,10 +2154,13 @@ def main():
     if not USE_LOCAL:
         require_remote_config()
 
+    if USE_CREATE_DEST:
+        validate_dest_mode(DEST_MODE)
+
     # ── Log / tree / CSV filenames ────────────────────────────────────────────
     remote_dir_name = Path(REMOTE_DIR).name
     timestamp       = datetime.now().strftime("%Y%m%d_%H%M%S")
-    Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
+    prepare_log_dir()
     LOG_FILE  = str(Path(LOG_DIR) / f"{remote_dir_name}_{timestamp}_replication.log")
     TREE_FILE = str(Path(LOG_DIR) / f"{remote_dir_name}_{timestamp}_source.tree")
     CSV_FILE  = str(Path(LOG_DIR) / f"{remote_dir_name}_{timestamp}_filelist.csv")

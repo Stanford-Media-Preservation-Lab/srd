@@ -82,7 +82,9 @@ export SRD_REMOTE_USER="your_username"           # Your username on the remote s
 export SRD_LOG_DIR="/Users/yourname/Desktop/srd_logs"   # Where log files and tree files are saved
 ```
 
-`SRD_REMOTE_HOST` and `SRD_REMOTE_USER` are only needed for SFTP and push modes; `--local` copies do not use them. The SSH ControlMaster socket path (`/tmp/srd_ctl_%h`) is a constant in the script and should be left as-is.
+`SRD_REMOTE_HOST` and `SRD_REMOTE_USER` are only needed for SFTP and push modes; `--local` copies do not use them. Optionally, `SRD_DEST_MODE` sets the permissions given to a folder created with `--push --create-dest` (default `777`; use `775` or `770` with a shared group to tighten it).
+
+The SSH ControlMaster socket lives in `~/.ssh/srd_ctl_<host>` (private to your account) and is a constant in the script that should be left as-is.
 
 `SRD_LOG_DIR` will be created automatically if it does not exist.
 
@@ -213,7 +215,7 @@ srd /path/on/server/request-0001 /media/yourname/RAID_1/260219
 If you forget and run srd without opening the session first, you will see a clear error:
 
 ```
-✗ SSH control socket not found: /tmp/srd_ctl_server.example.edu
+✗ SSH control socket not found: ~/.ssh/srd_ctl_server.example.edu
   Run: srd --open-ssh
 ```
 

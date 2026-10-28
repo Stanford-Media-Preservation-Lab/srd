@@ -5,6 +5,12 @@
 - Server hostname is now read from the `SRD_REMOTE_HOST` environment variable instead of being hardcoded; srd exits with a clear message if it (or `SRD_REMOTE_USER`) is unset in SFTP/push modes
 - Documentation and examples use placeholder hostnames, usernames and paths
 - Fix stale install URL in `INSTALL_UBUNTU.md`
+- New optional `SRD_DEST_MODE` env var sets the permissions of folders created by `--push --create-dest` (default remains `777`)
+- Security: remote paths and filenames are now shell-quoted in all commands run on the server (previously a space, `;` or `'` in a path or filename could break or alter the command)
+- SSH control socket moved from `/tmp` to `~/.ssh/` (private to the user). **Run `srd --open-ssh` again after upgrading.**
+- Fix: remote statistics script had a bash syntax error (`[[` without spaces); fixed
+- Fix: server-side MD5 mismatch / missing sidecar / unreadable sidecar messages printed the literal text `{rel}` instead of the filename
+- Fix: clear error message (instead of a traceback) when `SRD_LOG_DIR` is unset or cannot be created
 
 ## v1.2 — September 2026
 
